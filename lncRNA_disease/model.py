@@ -178,11 +178,59 @@ class GCN_mgaev3(torch.nn.Module):
         return x
 
 
-class LPDecoder(torch.nn.Module):
+# class LPDecoder(torch.nn.Module):
+#     def __init__(self, in_channels, hidden_channels, out_channels, encoder_layer, num_layers,
+#                  dropout, de_v='v1'):
+#         super(LPDecoder, self).__init__()
+#         n_layer = encoder_layer * encoder_layer
+#         self.lins = torch.nn.ModuleList()
+#         if de_v == 'v1':
+#             self.lins.append(torch.nn.Linear(in_channels * n_layer, hidden_channels))
+#             for _ in range(num_layers - 2):
+#                 self.lins.append(torch.nn.Linear(hidden_channels, hidden_channels))
+#             self.lins.append(torch.nn.Linear(hidden_channels, out_channels))
+#         else:
+#             self.lins.append(torch.nn.Linear(in_channels * n_layer, in_channels * n_layer))
+#             self.lins.append(torch.nn.Linear(in_channels * n_layer, hidden_channels))
+#             self.lins.append(torch.nn.Linear(hidden_channels, out_channels))
+
+#         self.dropout = dropout
+
+#     def reset_parameters(self):
+#         for lin in self.lins:
+#             lin.reset_parameters()
+
+#     def cross_layer(self, x_1, x_2):
+#         bi_layer = []
+#         for i in range(len(x_1)):
+#             xi = x_1[i]
+#             for j in range(len(x_2)):
+#                 xj = x_2[j]
+#                 bi_layer.append(torch.mul(xi, xj))
+#         bi_layer = torch.cat(bi_layer, dim=1)
+#         return bi_layer
+
+#     def forward(self, h, edge):
+#         src_x = [h[i][edge[0]] for i in range(len(h))]
+#         dst_x = [h[i][edge[1]] for i in range(len(h))]
+#         x = self.cross_layer(src_x, dst_x)
+#         for lin in self.lins[:-1]:
+#             x = lin(x)
+#             x = F.relu(x)
+#             x = F.dropout(x, p=self.dropout, training=self.training)
+#         x = self.lins[-1](x)
+#         return torch.sigmoid(x)
+
+class VAEDecoder(torch.nn.Module):
     def __init__(self, in_channels, hidden_channels, out_channels, encoder_layer, num_layers,
                  dropout, de_v='v1'):
-        super(LPDecoder, self).__init__()
+        super(VAEDecoder, self).__init__()
         n_layer = encoder_layer * encoder_layer
+
+        elf.latent_dim = latent_dim                                               #3 LINES ADDITION
+        self.mu_lin = torch.nn.Linear(in_channels * n_layer, latent_dim)
+        self.logvar_lin = torch.nn.Linear(in_channels * n_layer, latent_dim)
+
         self.lins = torch.nn.ModuleList()
         if de_v == 'v1':
             self.lins.append(torch.nn.Linear(in_channels * n_layer, hidden_channels))
@@ -196,9 +244,14 @@ class LPDecoder(torch.nn.Module):
 
         self.dropout = dropout
 
+
     def reset_parameters(self):
         for lin in self.lins:
             lin.reset_parameters()
+
+        self.mu_lin.reset_parameters()                                            #2 LINES ADDITION
+        self.logvar_lin.reset_parameters()
+
 
     def cross_layer(self, x_1, x_2):
         bi_layer = []
@@ -210,13 +263,25 @@ class LPDecoder(torch.nn.Module):
         bi_layer = torch.cat(bi_layer, dim=1)
         return bi_layer
 
+
+    def reparameterize(self, mu, logvar):                                         #ADDED FUNCTION
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        return mu + eps * std
+
+
     def forward(self, h, edge):
         src_x = [h[i][edge[0]] for i in range(len(h))]
         dst_x = [h[i][edge[1]] for i in range(len(h))]
         x = self.cross_layer(src_x, dst_x)
-        for lin in self.lins[:-1]:
-            x = lin(x)
-            x = F.relu(x)
-            x = F.dropout(x, p=self.dropout, training=self.training)
-        x = self.lins[-1](x)
-        return torch.sigmoid(x)
+
+        mu = self.mu_lin(x)                                                        #ADDED 3 LINES
+        logvar = self.logvar_lin(x)
+        z = self.reparameterize(mu, logvar)
+
+        for lin in self.lins[:-1]:                                               #CHANGED X TO Z
+            z = lin(z)
+            z = F.relu(z)
+            z = F.dropout(z, p=self.dropout, training=self.training)
+        z = self.lins[-1](z)
+        return torch.sigmoid(z), mu, logvar                                        #CHANGED RETURN
