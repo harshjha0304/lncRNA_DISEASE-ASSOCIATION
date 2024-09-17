@@ -222,7 +222,7 @@ class GCN_mgaev3(torch.nn.Module):
 #         return torch.sigmoid(x)
 
 class VAEDecoder(torch.nn.Module):
-    def __init__(self, in_channels, hidden_channels, out_channels, encoder_layer, num_layers, dropout, latent_dim, de_v='v1'):
+    def __init__(self, in_channels, hidden_channels, out_channels, encoder_layer, num_layers, dropout, latent_dim=64, de_v='v1'):
         super(VAEDecoder, self).__init__()
         
         # Using latent_dim in the decoder
