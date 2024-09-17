@@ -222,27 +222,26 @@ class GCN_mgaev3(torch.nn.Module):
 #         return torch.sigmoid(x)
 
 class VAEDecoder(torch.nn.Module):
-    def __init__(self, in_channels, hidden_channels, out_channels, encoder_layer, num_layers,
-                 dropout, de_v='v1'):
+    def __init__(self, in_channels, hidden_channels, out_channels, encoder_layer, num_layers, dropout, latent_dim, de_v='v1'):
         super(VAEDecoder, self).__init__()
+        
+        # Using latent_dim in the decoder
+        self.latent_dim = latent_dim
         n_layer = encoder_layer * encoder_layer
-
-        elf.latent_dim = latent_dim                                               #3 LINES ADDITION
-        self.mu_lin = torch.nn.Linear(in_channels * n_layer, latent_dim)
-        self.logvar_lin = torch.nn.Linear(in_channels * n_layer, latent_dim)
-
+        
         self.lins = torch.nn.ModuleList()
         if de_v == 'v1':
-            self.lins.append(torch.nn.Linear(in_channels * n_layer, hidden_channels))
+            self.lins.append(torch.nn.Linear(latent_dim, hidden_channels))
             for _ in range(num_layers - 2):
                 self.lins.append(torch.nn.Linear(hidden_channels, hidden_channels))
             self.lins.append(torch.nn.Linear(hidden_channels, out_channels))
         else:
-            self.lins.append(torch.nn.Linear(in_channels * n_layer, in_channels * n_layer))
-            self.lins.append(torch.nn.Linear(in_channels * n_layer, hidden_channels))
+            self.lins.append(torch.nn.Linear(latent_dim, latent_dim))
+            self.lins.append(torch.nn.Linear(latent_dim, hidden_channels))
             self.lins.append(torch.nn.Linear(hidden_channels, out_channels))
 
         self.dropout = dropout
+
 
 
     def reset_parameters(self):
@@ -270,18 +269,16 @@ class VAEDecoder(torch.nn.Module):
         return mu + eps * std
 
 
-    def forward(self, h, edge):
-        src_x = [h[i][edge[0]] for i in range(len(h))]
-        dst_x = [h[i][edge[1]] for i in range(len(h))]
-        x = self.cross_layer(src_x, dst_x)
+    def forward(self, z, edge):
+        # Decode the latent vector z
+        x = z
+        for lin in self.lins[:-1]:
+        x = lin(x)
+        x = F.relu(x)
+        x = F.dropout(x, p=self.dropout, training=self.training)
+        x = self.lins[-1](x)
+    
+        return torch.sigmoid(x)
 
-        mu = self.mu_lin(x)                                                        #ADDED 3 LINES
-        logvar = self.logvar_lin(x)
-        z = self.reparameterize(mu, logvar)
 
-        for lin in self.lins[:-1]:                                               #CHANGED X TO Z
-            z = lin(z)
-            z = F.relu(z)
-            z = F.dropout(z, p=self.dropout, training=self.training)
-        z = self.lins[-1](z)
-        return torch.sigmoid(z), mu, logvar                                        #CHANGED RETURN
+                                        #CHANGED RETURN
