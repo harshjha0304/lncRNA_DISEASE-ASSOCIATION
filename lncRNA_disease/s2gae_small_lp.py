@@ -122,10 +122,7 @@ def train(model, predictor, data, split_edge, optimizer, args):
     optimizer.zero_grad()
     h = model(data.x, pre_edge_index)
     edge = pos_train_edge
-
-
-   # Get output, mu, and logvar from the predictor
-    pos_out, mu, logvar = predictor(h, edge)
+    pos_out = predictor(h, edge)
     pos_loss = -torch.log(pos_out + 1e-15).mean()
 
     new_edge_index, _ = add_self_loops(edge_index.cpu())
@@ -135,23 +132,11 @@ def train(model, predictor, data, split_edge, optimizer, args):
 
     edge = edge.to(data.x.device)
 
-
-    # Get only the output for negative edges
-    neg_out, _, _ = predictor(h, edge)
+    neg_out = predictor(h, edge)
     neg_loss = -torch.log(1 - neg_out + 1e-15).mean()
 
-
-     # Calculate KL Divergence
-    kl_div = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-
-
-
-     # Add KL Divergence to the loss
-    beta = 0.1  # Example beta value
-    loss = pos_loss + neg_loss + beta * kl_div
-
+    loss = pos_loss + neg_loss
     loss.backward()
-
 
     torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
     torch.nn.utils.clip_grad_norm_(predictor.parameters(), 1.0)
@@ -159,7 +144,6 @@ def train(model, predictor, data, split_edge, optimizer, args):
     optimizer.step()
 
     return loss.item()
-
 
 
 @torch.no_grad()
@@ -177,37 +161,37 @@ def test(model, predictor, data, adj, split_edge, batch_size, draw=False):
     pos_train_preds = []
     for perm in DataLoader(range(pos_train_edge.size(0)), batch_size):
         edge = pos_train_edge[perm].t()
-        pos_train_preds += [predictor(h, edge)[0].squeeze().cpu()]  # Get the first output
+        pos_train_preds += [predictor(h, edge).squeeze().cpu()]
     pos_train_pred = torch.cat(pos_train_preds, dim=0)
 
     pos_valid_preds = []
     for perm in DataLoader(range(pos_valid_edge.size(0)), batch_size):
         edge = pos_valid_edge[perm].t()
-        pos_valid_preds += [predictor(h, edge)[0].squeeze().cpu()]  # Get the first output
+        pos_valid_preds += [predictor(h, edge).squeeze().cpu()]
     pos_valid_pred = torch.cat(pos_valid_preds, dim=0)
 
     neg_train_preds = []
     for perm in DataLoader(range(neg_train_edge.size(0)), batch_size):
         edge = neg_train_edge[perm].t()
-        neg_train_preds += [predictor(h, edge)[0].squeeze().cpu()]  # Get the first output
+        neg_train_preds += [predictor(h, edge).squeeze().cpu()]
     neg_train_pred = torch.cat(neg_train_preds, dim=0)
 
     neg_valid_preds = []
     for perm in DataLoader(range(neg_valid_edge.size(0)), batch_size):
         edge = neg_valid_edge[perm].t()
-        neg_valid_preds += [predictor(h, edge)[0].squeeze().cpu()]  # Get the first output
+        neg_valid_preds += [predictor(h, edge).squeeze().cpu()]
     neg_valid_pred = torch.cat(neg_valid_preds, dim=0)
 
     pos_test_preds = []
     for perm in DataLoader(range(pos_test_edge.size(0)), batch_size):
         edge = pos_test_edge[perm].t()
-        pos_test_preds += [predictor(h, edge)[0].squeeze().cpu()]  # Get the first output
+        pos_test_preds += [predictor(h, edge).squeeze().cpu()]
     pos_test_pred = torch.cat(pos_test_preds, dim=0)
 
     neg_test_preds = []
     for perm in DataLoader(range(neg_test_edge.size(0)), batch_size):
         edge = neg_test_edge[perm].t()
-        neg_test_preds += [predictor(h, edge)[0].squeeze().cpu()]  # Get the first output
+        neg_test_preds += [predictor(h, edge).squeeze().cpu()]
     neg_test_pred = torch.cat(neg_test_preds, dim=0)
 
     train_pred = torch.cat([pos_train_pred, neg_train_pred], dim=0)
@@ -307,8 +291,8 @@ def main():
                     args.hidden_channels, args.num_layers,
                     args.dropout).to(device)
 
-    predictor = VAEDecoder(args.hidden_channels, args.decode_channels, 1, args.num_layers,
-                          args.decode_layers, args.dropout, latent_dim=64, de_v=args.de_v).to(device) # Add latent_dim here
+    predictor = LPDecoder(args.hidden_channels, args.decode_channels, 1, args.num_layers,
+                          args.decode_layers, args.dropout, de_v=args.de_v).to(device)
 
     for run in range(args.runs):
         model.reset_parameters()
