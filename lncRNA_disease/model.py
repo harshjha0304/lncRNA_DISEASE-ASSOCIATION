@@ -220,3 +220,23 @@ class LPDecoder(torch.nn.Module):
             x = F.dropout(x, p=self.dropout, training=self.training)
         x = self.lins[-1](x)
         return torch.sigmoid(x)
+
+class VAE_GCN(torch.nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels, num_layers, dropout):
+        super(VAE_GCN, self).__init__()
+        self.encoder = GCN(in_channels, hidden_channels, out_channels, num_layers, dropout)
+        self.fc_mu = torch.nn.Linear(out_channels, hidden_channels)
+        self.fc_logvar = torch.nn.Linear(out_channels, hidden_channels)
+    
+    def reparameterize(self, mu, logvar):
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        return mu + eps * std
+    
+    def forward(self, x, edge_index):
+        h = self.encoder(x, edge_index)
+        mu = self.fc_mu(h)
+        logvar = self.fc_logvar(h)
+        z = self.reparameterize(mu, logvar)
+        return z, mu, logvar
+
